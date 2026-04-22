@@ -11,6 +11,9 @@
 //uio_out[2:1] holds packet code
 //uio_out[3] if high, save data
 
+// List all unused inputs to prevent warnings (NEED TO DO)
+//example:wire _unused = &{ena, clk, rst_n, 1'b0};
+
 module tt_um_advun (
     input  wire [7:0] ui_in,    // Dedicated inputs (DATA IN!!!)
     output wire [7:0] uo_out,   // Dedicated outputs
