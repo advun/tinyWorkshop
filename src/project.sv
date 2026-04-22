@@ -21,10 +21,10 @@ module tt_um_advun (
     localparam RAWTHRESHOLD = 8; //how big does delta have to be to go to raw? both pos and neg
     
     //packet codes
-    localparam RLE = 2'b00; //Normal run length encoding 1 byte = {2'bPacket Code, 2'bSignal #, 4'bRLE_count}
-    localparam DELTARLE = 2'b01; //run length encoding of deltas 1 byte = {2'bPacket Code, 2'bSignal #, 4'bRLE_count}
-    localparam DELTA = 2'b10; //small delta change.  1 byte = {2'bPacket Code, 2'bSignal #, 4'bDelta}
-    localparam RAW = 2'b11; //Raw data bytes: DATA_WIDTH/8 + 4 bits {2'bPacket Code, 2'bSignal #} {DATA}
+    localparam RLE = 2'b00; //Normal run length encoding 
+    localparam DELTARLE = 2'b01; //run length encoding of deltas
+    localparam DELTA = 2'b10; //small delta change
+    localparam RAW = 2'b11; //Raw data bytes
     
     //in/out assigns
     assign uio_oe[0]= 0; //input 
@@ -32,27 +32,30 @@ module tt_um_advun (
     assign uio_oe[2]= 1; //output
     assign uio_oe[3]= 1; //output
     
-    wire [7:0] in = ui_in;
-    wire [7:0] out = uo_out;
+    wire [7:0] in;
+    assign ui_in = in;
+    
     wire start = uio_in[0];
     
     reg [1:0] packet;
-    assign packet = uio_out [2:1];
+    assign uio_out [2:1] = packet;
     
     reg save;
-    assign save = uio_out[3];
+    assign uio_out[3] = save;
     
+    logic[7:0] out_r;
+    assign uo_out = out_r;
     always_comb begin
         case({OUTFLAG, save, packet})
-            4'b0100: out = RLE_count; //RLE Output
-            4'b1100: out = RLE_count; //RLE Output w/outflag
-            4'b0101: out = RLE_count; //DeltaRLE Output
-            4'b1101: out = RLE_count; //DeltaRLE Output w/outflag
-            4'b0110: out = {largeDeltanew[2:0],5'b00000}; //delta
-            4'b1110: out = {largeDeltanew[2:0],5'b00000}; //delta  w/outflag
-            4'b0111: out = storagenew; //raw
-            4'b1111: out = storageold; //raw w/outflag
-            default: out = 0;
+            4'b0100: out_r = RLE_count; //RLE Output
+            4'b1100: out_r = RLE_count; //RLE Output w/outflag
+            4'b0101: out_r = RLE_count; //DeltaRLE Output
+            4'b1101: out_r = RLE_count; //DeltaRLE Output w/outflag
+            4'b0110: out_r = {largeDeltanew[2:0],5'b00000}; //delta
+            4'b1110: out_r = {largeDeltanew[2:0],5'b00000}; //delta  w/outflag
+            4'b0111: out_r = storagenew; //raw
+            4'b1111: out_r = storageold; //raw w/outflag
+            default: out_r = 0;
         endcase
     end
     
