@@ -5,34 +5,19 @@
 
 `default_nettype none
 
-module tt_um_example (
-    input  wire [7:0] ui_in,    // Dedicated inputs
+module tt_um_advun (
+    input  wire [7:0] ui_in,    // Dedicated inputs (DATA IN!!!)
     output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
+    input  wire [7:0] uio_in,   // IOs: Input path //start = 0
     output wire [7:0] uio_out,  // IOs: Output path
     output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
     input  wire       ena,      // always 1 when the design is powered, so you can ignore it
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
-
-
-endmodule
-
-module compression (,
-    input start,
-    output reg onebyteoutFLAG, //flag for memory to say how many bytes are being output
-    output reg [DATA_WIDTH+4-1:0] bytesout, //data output to memory
-    output reg largebyteoutFLAG, //flag for memory to say how many bytes are being output
-    output reg uncompressedFLAG, //flag for uncompressed values for memory (TESTING)
-    output [DATA_WIDTH*SIGNAL_NUMBER-1:0] uncompressed //uncompressed values for memory
-    );
-    
-    import parameters::DATA_WIDTH;
-    import parameters::SIGNAL_NUMBER;
-    
+    localparam DATA_WIDTH = 8;
     localparam STARTER = 0; //starter compare value for delta
-    localparam RLEWIDTH = 4;  //width of RLE tracker
+    localparam RLEWIDTH = 8;  //width of RLE tracker
     localparam RAWTHRESHOLD = 8; //how big does delta have to be to go to raw? both pos and neg
     
     //packet codes
@@ -41,187 +26,122 @@ module compression (,
     localparam DELTA = 2'b10; //small delta change.  1 byte = {2'bPacket Code, 2'bSignal #, 4'bDelta}
     localparam RAW = 2'b11; //Raw data bytes: DATA_WIDTH/8 + 4 bits {2'bPacket Code, 2'bSignal #} {DATA}
     
-    reg [$clog2(SIGNAL_NUMBER)-1:0] signal; //which signal is being looked at
+    //in/out assigns
+    assign uio_oe[0]= 0; //input 
+    assign uio_oe[1]= 1; //output
+    assign uio_oe[2]= 1; //output
+    assign uio_oe[3]= 1; //output
     
-    localparam IDLE = 0, CHECK_SIGNAL = 1; //states
-    reg [2:0] state;
+    wire [7:0] in = ui_in;
+    wire [7:0] out = uo_out;
+    wire start = uio_in[0];
     
-    reg signed [DATA_WIDTH-1:0] storageold [SIGNAL_NUMBER-1:0]; //store full values for delta encoding. old value. signed
-    reg signed [DATA_WIDTH-1:0] storagenew [SIGNAL_NUMBER-1:0]; //store full values for delta encoding. new value. signed
-    reg [RLEWIDTH-1:0] RLE_count [SIGNAL_NUMBER-1:0]; //how many values same in a row.  if too big, space wasted.  if too small, splits RLE up into multiple
-    reg [RLEWIDTH-1:0] deltaRLE_count [SIGNAL_NUMBER-1:0]; //how many deltas same in a row
-    reg signed [DATA_WIDTH-1:0] largeDeltaold [SIGNAL_NUMBER-1:0]; //last delta.  just change out for third storage??
-    reg signed [DATA_WIDTH-1:0] largeDeltanew [SIGNAL_NUMBER-1:0]; //current delta
+    reg [1:0] packet;
+    assign packet = uio_out [2:1];
+    
+    reg save;
+    assign save = uio_out[3];
+    
+    always_comb begin
+        case({OUTFLAG, save, packet})
+            4'b0100: out = RLE_count; //RLE Output
+            4'b1100: out = RLE_count; //RLE Output w/outflag
+            4'b0101: out = RLE_count; //DeltaRLE Output
+            4'b1101: out = RLE_count; //DeltaRLE Output w/outflag
+            4'b0110: out = {largeDeltanew[2:0],5'b00000}; //delta
+            4'b1110: out = {largeDeltanew[2:0],5'b00000}; //delta  w/outflag
+            4'b0111: out = storagenew; //raw
+            4'b1111: out = storageold; //raw w/outflag
+            default: out = 0;
+        endcase
+    end
+    
+    
+    reg [DATA_WIDTH-1:0] storageold; //store full values for delta encoding. old value
+    reg [DATA_WIDTH-1:0] storagenew; //store full values for delta encoding. new value
+    reg [RLEWIDTH-1:0] RLE_count; //how many values/deltas same in a row
+    //reg [RLEWIDTH-1:0] deltaRLE_count; //how many deltas same in a row (DONT NEED, JUST USE RLE_count)
+    reg [DATA_WIDTH-1:0] largeDeltaold; //last delta.  just change out for third storage??
+    reg signed [DATA_WIDTH:0] largeDeltanew; //current delta, 1 bit larger for sign bit
+    reg OUTFLAG; //goes high if the previous output was skipped for rle or deltarle ending
+    reg RLEFLAG; //low if RLE, high if DELTARLE
     
     always @ (posedge clk) begin
-        if (!reset_n) begin
-            
-            foreach (storagenew[i]) begin //initialize starting value at 0
-                storagenew[i] <= STARTER;
-            end
-            
-            //reset run length counts
-            foreach (RLE_count[i]) begin 
-                RLE_count[i] <= 0;
-            end
-            
-            foreach (deltaRLE_count[i]) begin
-                deltaRLE_count[i] <= 0;
-            end
-            
-            foreach (largeDeltaold[i]) begin
-                largeDeltaold[i] <= 0;
-            end
-            
-            foreach (largeDeltanew[i]) begin
-                largeDeltanew[i] <= 0;
-            end
-            
-            onebyteoutFLAG <= 0;
-            largebyteoutFLAG <= 0;
-            signal <= 0;
-            state <= IDLE;
+        if (!rst_n) begin
+            storageold <= 0;
+            storagenew <= STARTER; //initialize starting value at 0
+            RLE_count <= 0; //reset run length counts
+            //deltaRLE_count <= 0;
+            largeDeltaold <= 0;
+            largeDeltanew <= 0;
+            OUTFLAG <= 0;
         end
         
         else begin
-            //clear flags every cycle //issues with setting twice in same cycle?? look into
-            onebyteoutFLAG <= 0;
-            largebyteoutFLAG <= 0;
-            uncompressedFLAG <= 0; 
-            
-            if (compressedready) begin //only go if bramstorage can take a value
-            
-            case (state) 
-            
-                IDLE: begin
-            
-                    if (start) begin
-                        foreach (storagenew[i]) begin //move new values to old values
-                            storageold[i] <= storagenew[i];
-                        end
-                        
-                        foreach (in[i]) begin //read in new values
-                            storagenew[i] <= in[i];
-                        end
-                        
-                        signal <= 0;
-                        state <= CHECK_SIGNAL;
-                        if (!uncompressedfull) begin //if uncompressed is full, don't send values.  for testing
-                            uncompressedFLAG <= 1;
-                        end
-                    end
-            
-                end
-                
-                CHECK_SIGNAL: begin
+             if (start) begin
+                 storageold <= storagenew; //move new values to old 
+                 storagenew <= ui_in; //read in new values
+    
+                 if (OUTFLAG) begin
+                    packet <= RAW;
+                 end
                     
-                    if (storagenew[signal] == storageold[signal]) begin //check if same
-                        RLE_count[signal] <= RLE_count[signal] + 1; //RLE mode!
+                    if (storagenew == storageold) begin //check if same
+                        RLE_count <= RLE_count + 1; //RLE mode!
+                        OUTFLAG <= 0;
+                        RLEFLAG <= 0;
                         
-                        if (RLE_count[signal] >= ((1 << RLEWIDTH) - 1)) begin //hit max value (avoid overflow)
-                            bytesout[7:0] <= {RLE, signal, RLE_count[signal]};
-                            onebyteoutFLAG <= 1;
-                            RLE_count[signal] <= 0;
-                            // Don't increment signal - stay on same signal to continue RLE next cycle
+                        if (RLE_count >= ((1 << RLEWIDTH) - 1)) begin //hit max value (avoid overflow)
+                            packet <= RLE;
+                            RLE_count <= 0;
                         end
-                        else begin
-                            // No packet emitted, just accumulating run - move to next signal
-                            if (signal == SIGNAL_NUMBER-1) begin //if done with signals, go back to IDLE
-                                state <= IDLE;
-                                signal <= 0;
-                            end
-                            else begin
-                                signal <= signal + 1; //move to next signal
-                            end
-                        end
-                    end
-                    
                     else begin //if different
                         //RLE fail
-                        if (RLE_count[signal] > 0) begin //if there is an RLE run, end it
-                            bytesout[7:0] <= {RLE, signal, RLE_count[signal]};
-                            onebyteoutFLAG <= 1;
-                            RLE_count[signal] <= 0;
-                            //failed, re run through process with same signal (don't increment)
+                        if ((RLE_count > 0)&&(RLEFLAG == 0)) begin //if there is an RLE run, end it
+                            packet <= RLE;
+                            OUTFLAG <= 1;
+                            RLE_count <= 0;
                         end
-                        
+                         
+                        largeDeltaold <= largeDeltanew[DATA_WIDTH-1:0]; //update largeDeltaold
+                        largeDeltanew <= storagenew - storageold;  //find delta
+                            
+                        if (largeDeltanew[DATA_WIDTH-1:0] == largeDeltaold) begin //Delta RLE Mode
+                            RLE_count <= RLE_count + 1; //increment counter by 1
+                            OUTFLAG <= 0;
+                            RLEFLAG <= 1;
+                               
+                            if (RLE_count >= ((1 << RLEWIDTH) - 1)) begin //hit max value (avoid overflow)
+                                packet <= DELTARLE;
+                                RLE_count <= 0;
+                            end
+                        end
+                            
                         else begin
-                            //not super happy about this being blocking, but may be simplest approach.  check if timing violations
-                            largeDeltaold[signal] = largeDeltanew[signal]; //update largeDeltaold
-                            largeDeltanew[signal] = storagenew[signal] - storageold[signal];  //find delta
-                            
-                            if (largeDeltanew[signal] == largeDeltaold[signal]) begin //Delta RLE Mode
-                                deltaRLE_count[signal] <= deltaRLE_count[signal] + 1; //increment counter by 1
-                        
-                                if (deltaRLE_count[signal] >= ((1 << RLEWIDTH) - 1)) begin //hit max value (avoid overflow)
-                                    bytesout[7:0] <= {DELTARLE, signal, deltaRLE_count[signal]};
-                                    onebyteoutFLAG <= 1;
-                                    deltaRLE_count[signal] <= 0;
-                                    // Don't increment signal - stay to continue DeltaRLE next cycle
-                                end
-                                else begin
-                                    // No packet emitted, accumulating delta run - move to next signal
-                                    if (signal == SIGNAL_NUMBER-1) begin //if done with signals, go back to IDLE
-                                        state <= IDLE;
-                                        signal <= 0;
-                                    end
-                                    else begin
-                                        signal <= signal + 1; //move to next signal
-                                    end
-                                end
+                            if (RLE_count > 0) begin //if there is a deltaRLE run, end it
+                                packet <= DELTARLE;
+                                RLE_count <= 0;
+                                OUTFLAG <= 1;
                             end
                             
-                            else if (deltaRLE_count[signal] > 0) begin //if there is a deltaRLE run, end it
-                                bytesout[7:0] <= {DELTARLE, signal, deltaRLE_count[signal]};
-                                onebyteoutFLAG <= 1;
-                                deltaRLE_count[signal] <= 0;
-                                //failed, re run through process with same signal (don't increment)
-                            end
-                            
-                            else if ((largeDeltanew[signal] < RAWTHRESHOLD) && (largeDeltanew[signal] > -RAWTHRESHOLD-1)) begin // if small delta: DELTA mode! -1 as signed goes -N+1 to N
-                                bytesout[7:0] <= {DELTA, signal, largeDeltanew[signal][DATA_WIDTH-1], largeDeltanew[signal][2:0]};  //grab sign bit and last 3 bits of delta
-                                onebyteoutFLAG <= 1;
-                                
-                                // Emitted final packet for this signal - move to next
-                                if (signal == SIGNAL_NUMBER-1) begin //if done with signals, go back to IDLE
-                                    state <= IDLE;
-                                    signal <= 0;
-                                end
-                                else begin
-                                    signal <= signal + 1; //move to next signal
-                                end
+                            else if ((largeDeltanew < RAWTHRESHOLD)&& (!OUTFLAG)) begin // if small delta: DELTA mode!
+                                    packet <= DELTA;
                             end
                             
                             else begin //large delta: RAW mode!
-                                bytesout[DATA_WIDTH+4-1:0] <= {RAW, signal, storagenew[signal]}; 
-                                largebyteoutFLAG <= 1;
-                                
-                                // Emitted final packet for this signal - move to next
-                                if (signal == SIGNAL_NUMBER-1) begin //if done with signals, go back to IDLE
-                                    state <= IDLE;
-                                    signal <= 0;
-                                end
-                                else begin
-                                    signal <= signal + 1; //move to next signal
-                                end
-                            end   
-                        end
+                                 if (OUTFLAG) begin 
+                                    //nothing, pass value next cycle
+                                 end
+                                 else begin
+                                    packet <= RAW;
+                                 end
+                            end
+                        end   
                     end
                 end
-                
-                        //Extra Case: begin
-            
-            
-            
-                        //end         
-                endcase
             end
         end
-    
     end
-    
-
-    assign uncompressed = {storagenew[3], storagenew[2], storagenew[1], storagenew[0]}; //send out uncompressed values for memory compairision with compressed values
 
         
 endmodule
