@@ -48,6 +48,7 @@ module tt_um_advun (
     reg RLEFLAG; //low if RLE, high if DELTARLE
     reg seen_first; //false if first cycle
     reg seen_delta; //false if first or second cycle
+    reg flushing; //low if still needs to flush. goes high when done
 
     //seen_first prevents a bug where the first data packet might output as a delta or start a RLE/DELTARLE run
     //forces first packet to be raw
@@ -94,13 +95,14 @@ module tt_um_advun (
             out_data <= 0;
             out_packetcode <= 0;
             out_save <= 0;
+            flushing <= 0;
         end
 
         else if (uio_in[3]) begin //if start is asserted
         //save data
             storageold <= ui_in;
             largeDeltaold  <= new_delta;
-            
+            flushing <= 0;
 
             if (!seen_first) begin //first round detection, transmit current data as raw
                 seen_first <= 1;
@@ -215,6 +217,38 @@ module tt_um_advun (
                 out_packetcode <= sample_packetcode;
                 out_data   <= sample_data;
                 out_save   <= 1;
+            end
+
+        end
+
+        else begin //no start
+            if (!flushing && pending_valid) begin //flush pending data in mailbox
+                out_packetcode <= pending_packetcode;
+                out_data <= pending_data;
+                out_save <= 1;
+                pending_valid <= 0;
+                flushing <= 1;
+                seen_first <= 0;
+                seen_delta <= 0;
+            end
+            else if (!flushing && (RLE_count > 0)) begin //end run
+                out_packetcode <= RLEFLAG ? DELTARLE : RLE;
+                out_data <= RLE_count;
+                out_save <= 1;
+                RLE_count <= 0;
+                RLEFLAG <= 0;
+                flushing <= 1;
+                seen_first <= 0;
+                seen_delta <= 0;
+            end
+            else if (!flushing) begin //if no pending or run
+                flushing <= 1;
+                seen_first <= 0;
+                seen_delta <= 0;
+                out_save <= 0;
+            end
+            else begin
+                out_save <= 0;
             end
 
         end
