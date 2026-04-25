@@ -30,7 +30,7 @@ RAW (CODE 2'b11): if data changes too much to properly compress: don’t compres
 First, reset, then assert start (uio_in[3]) as 1 (needs to be held entire time) and put in your input data into ui_in[7:0].  The next cycle, ui_out[7:0] will have either the raw data, run length, or delta, while uio_out[1:0] will have the packet code, and uio_out[2] will have save, which is high if you should save the data, and low if you should ignore the data.  Run Length and DELTARLE do not send packets unless they either are interrupted by a value that does not fit, or would overflow, so you should expect long runs of save being low while RLE or DELTARLE are happening.
 
 ## Pins
-uio_in[3] = start (assert while operating)\
+uio_in[3] = start (assert while operating.  when unasserted, allow for two more cycle to read out stored values)\
 ui_in[7:0] = input data to be compressed\
 uio_out[2] = save (if high, save output packet code and data to memory)\
 uio_out[1:0] = output packet code\
