@@ -27,10 +27,10 @@ module tt_um_advun (
     localparam RAW = 2'b11; //Raw data byte. 2 bit packet code, 8 bits data
 
     //in/out assigns
-    assign uio_oe[0]= 0; //input, start
-    assign uio_oe[1]= 1; //output, packet[0]
-    assign uio_oe[2]= 1; //output, packet[1]
-    assign uio_oe[3]= 1; //output, save
+    assign uio_oe[0]= 1; //output, packet[0]
+    assign uio_oe[1]= 1; //output, packet[1]
+    assign uio_oe[2]= 1; //output, save
+    assign uio_oe[3]= 0; //input, start
     assign uio_oe[4]= 0; //input, NOT USED
     assign uio_oe[5]= 0; //input, NOT USED
     assign uio_oe[6]= 0; //input, NOT USED
@@ -62,8 +62,8 @@ module tt_um_advun (
     reg out_save;
 
     assign uo_out = out_data; //actual data
-    assign uio_out[2:1] = out_packetcode; //what type of packet?
-    assign uio_out[3]   = out_save; //if true, save data
+    assign uio_out[1:0] = out_packetcode; //what type of packet?
+    assign uio_out[2]   = out_save; //if true, save data
 
     //mailbox registers
     reg pending_valid;
@@ -97,7 +97,7 @@ module tt_um_advun (
             out_save <= 0;
         end
 
-        else if (uio_in[0]) begin //if start is asserted
+        else if (uio_in[3]) begin //if start is asserted
         //save data
             storageold <= ui_in;
             largeDeltaold  <= new_delta;
