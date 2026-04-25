@@ -34,7 +34,7 @@ uio_in[3] = start (assert while operating)\
 ui_in[7:0] = input data to be compressed\
 uio_out[2] = save (if high, save output packet code and data to memory)\
 uio_out[1:0] = output packet code\
-ui_out[7:0] = output data\
+ui_out[7:0] = output data
 
 Unused: uio_in[7:4], uio_in[2:0]
 All unusued uio pins are configured as inputs.
