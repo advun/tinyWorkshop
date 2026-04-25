@@ -2,10 +2,10 @@
 project:
   title:        "tinyWorkshop"      # Project title
   author:       "advun"      # Your name
-  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  ""      # One line description of what your project does
+  discord:      "quenu"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
+  description:  "Compresses trace data in one clock cycle through simple and space efficient compression algorithm"      # One line description of what your project does
   language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable) 50 MHz!!!
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
@@ -33,20 +33,20 @@ pinout:
   ui[7]: "datain[7]"
 
   # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  uo[0]: "dataout[0]"
+  uo[1]: "dataout[1]"
+  uo[2]: "dataout[2]"
+  uo[3]: "dataout[3]"
+  uo[4]: "dataout[4]"
+  uo[5]: "dataout[5]"
+  uo[6]: "dataout[6]"
+  uo[7]: "dataout[7]"
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
+  uio[0]: "start"
+  uio[1]: "out_packetcode[0]"
+  uio[2]: "out_packetcode[1]"
+  uio[3]: "out_save"
   uio[4]: ""
   uio[5]: ""
   uio[6]: ""
