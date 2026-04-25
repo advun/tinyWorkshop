@@ -158,3 +158,195 @@ async def test_project(dut):
     dut.ui_in.value = 200
     assert (int(dut.uio_out.value) & 0b100) == 0, f"in258 post-overflow: save should be 0, got {bin(int(dut.uio_out.value))}"
     await ClockCycles(dut.clk, 1)
+
+    #FLUSH MID-RLE TESTING
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+    dut.uio_in.value = 0b00001000
+
+    dut.ui_in.value = 50  # in1 (RAW 50)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 50  # in2 (RLE start, silent)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 50  # in3 (RLE extend, silent)
+    # test1: in1 produced RAW 50
+    assert int(dut.uo_out.value) == 50, f"flush_rle test1 data: expected 50, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_rle test1: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0  # drop start, triggers flush next cycle
+    # test2: in2 produced silent RLE start
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_rle test2 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test3: in3 produced silent RLE extend (RLE_count=2 inside)
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_rle test3 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test4: flush emerges -> RLE(2)
+    assert int(dut.uo_out.value) == 2, f"flush_rle test4 RLE count: expected 2, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b100, f"flush_rle test4: expected RLE+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test5: post-flush silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_rle test5 post-flush silent: got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+
+    #FLUSH MID-DELTARLE TESTING
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+    dut.uio_in.value = 0b00001000
+
+    dut.ui_in.value = 50  # in1 (RAW 50)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 55  # in2 (DELTA +5)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 60  # in3 (DeltaRLE start, silent)
+    # test1: in1 produced RAW 50
+    assert int(dut.uo_out.value) == 50, f"flush_drle test1 data: expected 50, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_drle test1: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 65  # in4 (DeltaRLE extend, silent)
+    # test2: in2 produced DELTA +5 = 0b00101000
+    assert int(dut.uo_out.value) == 0b00101000, f"flush_drle test2 DELTA payload: expected 0b00101000, got {bin(int(dut.uo_out.value))}"
+    assert int(dut.uio_out.value) == 0b110, f"flush_drle test2: expected DELTA+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0  # drop start, flush will fire (RLE_count=2, RLEFLAG=1)
+    # test3: in3 silent (DeltaRLE start)
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_drle test3 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test4: in4 silent (DeltaRLE extend)
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_drle test4 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test5: flush emerges -> DELTARLE(2)
+    assert int(dut.uo_out.value) == 2, f"flush_drle test5 DeltaRLE count: expected 2, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b101, f"flush_drle test5: expected DELTARLE+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test6: post-flush silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_drle test6 post-flush silent: got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+
+    #FLUSH WITH PENDING TESTING
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+    dut.uio_in.value = 0b00001000
+
+    dut.ui_in.value = 50  # in1 (RAW 50)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 50  # in2 (RLE start, silent)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 50  # in3 (RLE extend, silent)
+    # test1: in1 produced RAW 50
+    assert int(dut.uo_out.value) == 50, f"flush_pending test1 data: expected 50, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_pending test1: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 200  # in4 (RLE break, emits RLE(2), queues RAW 200)
+    # test2: in2 silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_pending test2 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0  # drop start while pending=1, RLE_count=0
+    # test3: in3 silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_pending test3 save should be 0, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test4: in4's RLE break -> RLE(2)
+    assert int(dut.uo_out.value) == 2, f"flush_pending test4 RLE count: expected 2, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b100, f"flush_pending test4: expected RLE+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test5: flush drains pending RAW 200
+    assert int(dut.uo_out.value) == 200, f"flush_pending test5 drained pending: expected 200, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_pending test5: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test6: post-flush silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_pending test6 post-flush silent: got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+
+    #FLUSH WITH NO RUN TESTING
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+    dut.uio_in.value = 0b00001000
+
+    dut.ui_in.value = 50  # in1 (RAW 50)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 200  # in2 (RAW 200, large delta)
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0  # drop start, no run active, no pending
+    # test1: in1 produced RAW 50
+    assert int(dut.uo_out.value) == 50, f"flush_norun test1 data: expected 50, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_norun test1: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test2: in2 produced RAW 200
+    assert int(dut.uo_out.value) == 200, f"flush_norun test2 data: expected 200, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_norun test2: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test3: flush silent (Branch C)
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_norun test3 flush silent: got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    # test4: post-flush silent
+    assert (int(dut.uio_out.value) & 0b100) == 0, f"flush_norun test4 post-flush silent: got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+
+    #FLUSH THEN RESUME TESTING
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+    dut.uio_in.value = 0b00001000
+
+    dut.ui_in.value = 77  # in1 (RAW 77)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 77  # in2 (RLE start)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 77  # in3 (RLE extend)
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0  # drop start, will emit RLE(2)
+    await ClockCycles(dut.clk, 1)
+
+    await ClockCycles(dut.clk, 1)
+    # flush packet now visible
+    assert int(dut.uo_out.value) == 2, f"flush_resume flush count: expected 2, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b100, f"flush_resume flush: expected RLE+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
+
+    dut.uio_in.value = 0b00001000  # re-assert start
+    dut.ui_in.value = 200  # post-flush in1 (should be RAW since seen_first cleared)
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 200  # post-flush in2
+    await ClockCycles(dut.clk, 1)
+
+    dut.ui_in.value = 200  # post-flush in3
+    # post-flush test: post-flush in1 should emit as RAW (proves seen_first was cleared)
+    assert int(dut.uo_out.value) == 200, f"flush_resume post: expected 200, got {int(dut.uo_out.value)}"
+    assert int(dut.uio_out.value) == 0b111, f"flush_resume post: expected RAW+save, got {bin(int(dut.uio_out.value))}"
+    await ClockCycles(dut.clk, 1)
