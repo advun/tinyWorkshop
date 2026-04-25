@@ -36,11 +36,10 @@ module tt_um_advun (
     assign uio_oe[6]= 0; //input, NOT USED
     assign uio_oe[7]= 0; //input, NOT USED
 
-    assign uio_out[0] = 0; //NOT USED
-    assign uio_out[7:4] = 0; //NOT USED
+    assign uio_out[7:3] = 0; //NOT USED
 
     //suppress unused-input warnings
-    wire _unused = &{ena, uio_in[7:1], 1'b0};
+    wire _unused = &{ena, uio_in[7:4], uio_in[2:0], 1'b0};
 
     //operational registers
     reg [DATA_WIDTH-1:0] storageold; //store full values for delta encoding. previous value
